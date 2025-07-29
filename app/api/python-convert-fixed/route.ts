@@ -13,7 +13,7 @@ import {
   Header,
   Footer,
   PageNumber,
-  PageNumberFormat,
+  ImageRun,
 } from "docx"
 
 export async function POST(request: NextRequest) {
@@ -431,35 +431,135 @@ function processCodeCell(cell: any, sections: any[], executionNumber: number) {
         })
       } else if (
         (output.output_type === "execute_result" || output.output_type === "display_data") &&
-        output.data &&
-        output.data["text/plain"]
+        output.data
       ) {
-        const text = Array.isArray(output.data["text/plain"])
-          ? output.data["text/plain"].join("")
-          : output.data["text/plain"]
-
-        const outputText = String(text).trim()
-        const cleanOutput = cleanArrayOutput(outputText)
-        const outputLines = cleanOutput.split("\n")
-
-        outputLines.forEach((line, lineIndex) => {
+        // Handle image outputs first
+        if (output.data["image/png"]) {
+          try {
+            const base64Data = output.data["image/png"]
+            const imageBuffer = Buffer.from(base64Data, 'base64')
+            
+            sections.push(
+              new Paragraph({
+                children: [
+                  new ImageRun({
+                    type: "png",
+                    data: imageBuffer,
+                    transformation: {
+                      width: 400,
+                      height: 300,
+                    },
+                  }),
+                ],
+                alignment: AlignmentType.CENTER,
+                spacing: { before: 200, after: 200 },
+              }),
+            )
+          } catch (error) {
+            console.error("Failed to process PNG image:", error)
+            // Fallback to text representation
+            sections.push(
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: "[Image: PNG plot/figure]",
+                    font: "Calibri",
+                    size: 20,
+                    color: "666666",
+                    italics: true,
+                  }),
+                ],
+                alignment: AlignmentType.CENTER,
+                spacing: { before: 100, after: 100 },
+              }),
+            )
+          }
+        } else if (output.data["image/jpeg"]) {
+          try {
+            const base64Data = output.data["image/jpeg"]
+            const imageBuffer = Buffer.from(base64Data, 'base64')
+            
+            sections.push(
+              new Paragraph({
+                children: [
+                  new ImageRun({
+                    type: "jpg",
+                    data: imageBuffer,
+                    transformation: {
+                      width: 400,
+                      height: 300,
+                    },
+                  }),
+                ],
+                alignment: AlignmentType.CENTER,
+                spacing: { before: 200, after: 200 },
+              }),
+            )
+          } catch (error) {
+            console.error("Failed to process JPEG image:", error)
+            // Fallback to text representation
+            sections.push(
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: "[Image: JPEG plot/figure]",
+                    font: "Calibri",
+                    size: 20,
+                    color: "666666",
+                    italics: true,
+                  }),
+                ],
+                alignment: AlignmentType.CENTER,
+                spacing: { before: 100, after: 100 },
+              }),
+            )
+          }
+        } else if (output.data["image/svg+xml"]) {
+          // SVG images can't be directly embedded in docx, so show a placeholder
           sections.push(
             new Paragraph({
               children: [
                 new TextRun({
-                  text: line.trim() || " ",
-                  font: "Consolas",
+                  text: "[Image: SVG plot/figure - SVG format not supported in Word documents]",
+                  font: "Calibri",
                   size: 20,
-                  color: "000000",
+                  color: "666666",
+                  italics: true,
                 }),
               ],
-              spacing: {
-                before: lineIndex === 0 ? 100 : 0,
-                after: lineIndex === outputLines.length - 1 ? 200 : 0,
-              },
+              alignment: AlignmentType.CENTER,
+              spacing: { before: 100, after: 100 },
             }),
           )
-        })
+        } else if (output.data["text/plain"]) {
+          // Handle text/plain outputs as before
+          const text = Array.isArray(output.data["text/plain"])
+            ? output.data["text/plain"].join("")
+            : output.data["text/plain"]
+
+          const outputText = String(text).trim()
+          const cleanOutput = cleanArrayOutput(outputText)
+          const outputLines = cleanOutput.split("\n")
+
+          outputLines.forEach((line, lineIndex) => {
+            sections.push(
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: line.trim() || " ",
+                    font: "Consolas",
+                    size: 20,
+                    color: "000000",
+                  }),
+                ],
+                spacing: {
+                  before: lineIndex === 0 ? 100 : 0,
+                  after: lineIndex === outputLines.length - 1 ? 200 : 0,
+                },
+              }),
+            )
+          })
+        }
       }
     })
   }
